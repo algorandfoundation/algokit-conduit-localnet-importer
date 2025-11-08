@@ -15,6 +15,7 @@ import (
 
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
 	sdk "github.com/algorand/go-algorand-sdk/v2/types"
 
 	"github.com/algorand/conduit/conduit/data"
@@ -203,6 +204,24 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 		Timestamp:   int64(genesisResponse.Timestamp),
 		Comment:     genesisResponse.Comment,
 		DevMode:     genesisResponse.Devmode,
+	}
+
+	// Convert allocations
+	for i, alloc := range genesisResponse.Alloc {
+		var state sdk.Account
+		stateBytes := msgpack.Encode(alloc.State)
+		if stateBytes == nil {
+			return fmt.Errorf("error converting allocation state for address %s", alloc.Addr)
+		}
+		err = msgpack.Decode(stateBytes, &state)
+		if err != nil {
+			return fmt.Errorf("error unmarshaling allocation state: %w", err)
+		}
+		genesis.Allocation[i] = sdk.GenesisAllocation{
+			Address: alloc.Addr,
+			Comment: alloc.Comment,
+			State:   state,
+		}
 	}
 
 	li.genesis = &genesis

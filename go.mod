@@ -1,6 +1,6 @@
 module github.com/MakerXStudio/conduit-localnet-importer
 
-go 1.25.4
+go 1.23.0
 
 require (
 	github.com/algorand/conduit v1.9.0
