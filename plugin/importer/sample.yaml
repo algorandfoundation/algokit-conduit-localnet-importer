@@ -1,0 +1,23 @@
+name: localnet_importer
+config:
+    # Lead node URL to poll for latest round information
+    lead-node-url: "http://localhost:8080"
+
+    # Follower node API address (must be in follower mode)
+    follower-node-url: "http://localhost:8081"
+
+    # Default API token (used for both nodes if specific tokens are not provided)
+    # At least one token must be provided (either 'token' or both specific tokens)
+    token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    # Follower node API token (optional, overrides 'token' for follower node)
+    # follower-node-token: "your-follower-specific-token"
+
+    # Lead node API token (optional, overrides 'token' for lead node)
+    # lead-node-token: "your-lead-specific-token"
+
+    # How often to poll the lead node for status updates (default: 100ms)
+    # lead-node-poll-interval: 100ms
+
+    # Maximum time to wait for follower node to reach a specific round (default: 5s)
+    # wait-for-round-timeout: 5s

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  conduit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: conduit-localnet
+    ports:
+      - "8980:8980"  # Conduit API port
+    volumes:
+      - conduit-data:/data
+      - ./conduit.yml:/etc/algorand/conduit.yml:ro  # Mount your conduit config
+    environment:
+      CONDUIT_DATA_DIR: /data
+    restart: unless-stopped
+
+volumes:
+  conduit-data:

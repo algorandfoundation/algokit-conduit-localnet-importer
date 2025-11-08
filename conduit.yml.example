@@ -1,0 +1,63 @@
+# Example Conduit configuration using the localnet importer plugin
+
+# Conduit log level
+log-level: info
+
+# Log file (optional, logs to stdout if not specified)
+# log-file: /data/conduit.log
+
+# Conduit API configuration
+api:
+  address: ":8980"
+
+# Retry configuration
+retry:
+  count: 10
+  delay: 1s
+
+# Pipeline configuration
+# The localnet importer fetches blocks from a follower node that is synced to a lead node
+importer:
+  name: localnet_importer
+  config:
+    # Lead node URL (source of truth for current round)
+    lead-node-url: "http://localhost:8080"
+
+    # Follower node URL (provides blocks and deltas)
+    follower-node-url: "http://localhost:8081"
+
+    # Authentication token (used for both nodes if specific tokens not provided)
+    token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    # Optional: Specific token for lead node (defaults to 'token' if not specified)
+    # lead-node-token: "your-lead-specific-token"
+
+    # Optional: Specific token for follower node (defaults to 'token' if not specified)
+    # follower-node-token: "your-follower-specific-token"
+
+    # Optional: How often to poll the lead node for new rounds (default: 100ms)
+    # lead-node-poll-interval: 100ms
+
+    # Optional: Timeout for waiting for the follower to reach a round (default: 5s)
+    # wait-for-round-timeout: 5s
+
+# Processors (optional - add your processors here)
+processors:
+  # Example: filter processor to filter specific transaction types
+  # - name: filter_processor
+  #   config:
+  #     filters:
+  #       - any:
+  #         - tag: "txn.type"
+  #           expression-type: "equal"
+  #           expression: "pay"
+
+# Exporter configuration
+exporter:
+  name: postgresql
+  config:
+    # PostgreSQL connection string
+    connection-string: "host=localhost port=5432 user=conduit password=conduit dbname=conduit sslmode=disable"
+
+    # Maximum connection lifetime
+    max-conn-lifetime: 0s
