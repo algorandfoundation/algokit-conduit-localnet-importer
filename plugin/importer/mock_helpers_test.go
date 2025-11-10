@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -11,9 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
+
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
 	sdk "github.com/algorand/go-algorand-sdk/v2/types"
+
+	"github.com/algorand/conduit/conduit"
+	"github.com/algorand/conduit/conduit/plugins"
 )
 
 // mockAlgodServer represents a mock algod node with controllable behavior
@@ -25,17 +32,14 @@ type mockAlgodServer struct {
 	deltas       map[uint64]*sdk.LedgerStateDelta
 
 	// Instrumentation for testing
-	mu                  sync.Mutex
-	setSyncRoundCalls   []setSyncRoundCall
-	setSyncRoundLatency time.Duration
-	setSyncRoundError   error        // If set, SetSyncRound returns this error
-	onSetSyncRound      func(uint64) // Callback when SetSyncRound completes
+	mu                sync.Mutex
+	setSyncRoundCalls []setSyncRoundCall
+	setSyncRoundError error
 }
 
 // setSyncRoundCall records a call to SetSyncRound
 type setSyncRoundCall struct {
-	Round     uint64
-	Timestamp time.Time
+	Round uint64
 }
 
 // newMockAlgodServer creates a new mock algod server
@@ -75,8 +79,6 @@ func newMockAlgodServer(t *testing.T, initialRound uint64) *mockAlgodServer {
 
 		currentRound := mock.currentRound.Load()
 
-		// Handle negative round (e.g., round 0 requests StatusAfterBlock(-1))
-		// Return immediately if we're past that round
 		if afterRound < 0 || uint64(afterRound) < currentRound {
 			status := models.NodeStatus{
 				LastRound:   currentRound,
@@ -86,35 +88,11 @@ func newMockAlgodServer(t *testing.T, initialRound uint64) *mockAlgodServer {
 			return
 		}
 
-		// Simple implementation: wait for round to advance or timeout
-		timeout := time.After(5 * time.Second)
-		ticker := time.NewTicker(10 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				currentRound := mock.currentRound.Load()
-				if currentRound > uint64(afterRound) {
-					status := models.NodeStatus{
-						LastRound:   currentRound,
-						LastVersion: "v1",
-					}
-					json.NewEncoder(w).Encode(status)
-					return
-				}
-			case <-timeout:
-				// Return current round even if not advanced
-				status := models.NodeStatus{
-					LastRound:   mock.currentRound.Load(),
-					LastVersion: "v1",
-				}
-				json.NewEncoder(w).Encode(status)
-				return
-			case <-r.Context().Done():
-				return
-			}
+		status := models.NodeStatus{
+			LastRound:   currentRound,
+			LastVersion: "v1",
 		}
+		json.NewEncoder(w).Encode(status)
 	})
 
 	// Genesis endpoint
@@ -165,31 +143,19 @@ func newMockAlgodServer(t *testing.T, initialRound uint64) *mockAlgodServer {
 		var targetRound uint64
 		fmt.Sscanf(r.URL.Path, "/v2/ledger/sync/%d", &targetRound)
 
-		// Record the call (before any latency or errors)
+		// Record the call and check for error
 		mock.mu.Lock()
 		mock.setSyncRoundCalls = append(mock.setSyncRoundCalls, setSyncRoundCall{
-			Round:     targetRound,
-			Timestamp: time.Now(),
+			Round: targetRound,
 		})
-
-		// Check if we should return an error
 		syncErr := mock.setSyncRoundError
-		latency := mock.setSyncRoundLatency
-		callback := mock.onSetSyncRound
 		mock.mu.Unlock()
 
-		// Return error if configured (before doing any work)
 		if syncErr != nil {
 			http.Error(w, syncErr.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// Simulate catchup latency (before advancing the round)
-		if latency > 0 {
-			time.Sleep(latency)
-		}
-
-		// Actually advance the follower to the target round (simulating real SetSyncRound behavior)
 		if targetRound > 0 {
 			currentRound := mock.currentRound.Load()
 
@@ -210,11 +176,6 @@ func newMockAlgodServer(t *testing.T, initialRound uint64) *mockAlgodServer {
 		}
 
 		w.WriteHeader(http.StatusOK)
-
-		// Invoke callback after successful completion (outside lock)
-		if callback != nil {
-			callback(targetRound)
-		}
 	})
 
 	mock.server = newIPv4HTTPServer(t, mux)
@@ -246,13 +207,6 @@ func (m *mockAlgodServer) close() {
 	m.server.Close()
 }
 
-// setSetSyncRoundLatency configures the simulated latency for SetSyncRound operations
-func (m *mockAlgodServer) setSetSyncRoundLatency(d time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.setSyncRoundLatency = d
-}
-
 // setSetSyncRoundError configures SetSyncRound to return an error
 func (m *mockAlgodServer) setSetSyncRoundError(err error) {
 	m.mu.Lock()
@@ -281,13 +235,6 @@ func (m *mockAlgodServer) clearSyncRoundCalls() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.setSyncRoundCalls = nil
-}
-
-// setOnSetSyncRound sets a callback to be invoked when SetSyncRound completes
-func (m *mockAlgodServer) setOnSetSyncRound(callback func(uint64)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.onSetSyncRound = callback
 }
 
 // createTestGenesis creates a test genesis block
@@ -398,7 +345,58 @@ func requireMockServers(t *testing.T, leadRound, followerRound uint64) (lead *mo
 	return lead, follower
 }
 
-// newIPv4HTTPServer starts an httptest.Server bound to IPv4 loopback so tests do not rely on IPv6 availability.
+// setupTestImporter creates an importer and immediately stops the polling goroutine
+func setupTestImporter(t *testing.T, lead, follower *mockAlgodServer) *localnetImporter {
+	t.Helper()
+
+	cfgStr := createTestConfig(lead.server.URL, follower.server.URL)
+
+	importer := &localnetImporter{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	pipelineRound := sdk.Round(0)
+	err := importer.Init(ctx, conduit.MakePipelineInitProvider(&pipelineRound, nil, nil), plugins.MakePluginConfig(cfgStr), logger)
+	require.NoError(t, err)
+
+	if importer.pollingCancel != nil {
+		importer.pollingCancel()
+		importer.pollingWg.Wait()
+	}
+
+	// Initialize lead state to match the lead server's current round
+	// This simulates what would have happened if the polling goroutine had run
+	setLeadRound(importer, lead.currentRound.Load())
+
+	t.Cleanup(func() {
+		importer.Close()
+	})
+
+	return importer
+}
+
+// setLeadRound manually sets the lead state
+func setLeadRound(importer *localnetImporter, round uint64) {
+	importer.leadState.Store(leadNodeState{
+		Round:     round,
+		Timestamp: time.Now().UTC(),
+	})
+}
+
+// sendLeadSignal manually sends a signal
+func sendLeadSignal(importer *localnetImporter, round uint64) {
+	select {
+	case importer.syncSignal <- round:
+	default:
+		<-importer.syncSignal
+		importer.syncSignal <- round
+	}
+}
+
+// newIPv4HTTPServer starts an httptest.Server bound to IPv4 loopback
 func newIPv4HTTPServer(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Helper()
 

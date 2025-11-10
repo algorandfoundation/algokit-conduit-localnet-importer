@@ -1,44 +1,8 @@
 package importer
 
 import (
-	"fmt"
 	"time"
-
-	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
-
-// waitForLeadStatus blocks until the lead node is available, retrying with exponential backoff
-func (li *localnetImporter) waitForLeadStatus() (*models.NodeStatus, error) {
-	backoff := 1 * time.Second
-	maxBackoff := 30 * time.Second
-	attempt := 0
-
-	for {
-		attempt++
-		status, err := li.leadClient.Status().Do(li.ctx)
-		if err == nil {
-			if attempt > 1 {
-				li.logger.Infof("Successfully connected to lead node after %d attempts", attempt)
-			}
-			return &status, nil
-		}
-
-		li.logger.Warnf("Failed to get lead node status (attempt %d), retrying in %v: %v",
-			attempt, backoff, err)
-
-		select {
-		case <-time.After(backoff):
-			// Exponential backoff with max cap
-			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
-		case <-li.ctx.Done():
-			return nil, fmt.Errorf("context cancelled while waiting for lead node (after %d attempts): %w",
-				attempt, li.ctx.Err())
-		}
-	}
-}
 
 // startLeadNodePolling starts a background goroutine that polls the lead node for status updates
 func (li *localnetImporter) startLeadNodePolling() {
@@ -97,12 +61,12 @@ func (li *localnetImporter) startLeadNodePolling() {
 
 					previousRound = newRound
 
-					// Signal the sync handler to sync follower to this round (non-blocking)
+					// Signal any waiters that lead has advanced to this round (non-blocking)
 					select {
 					case li.syncSignal <- newRound:
 						li.logger.Tracef("Sent sync signal for round %d", newRound)
 					default:
-						li.logger.Tracef("Sync signal channel full, sync handler is busy")
+						li.logger.Tracef("Sync signal channel full, waiters may be busy")
 					}
 				}
 

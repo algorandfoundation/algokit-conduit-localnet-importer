@@ -1,9 +1,9 @@
 name: localnet_importer
 config:
-    # Lead node URL to poll for latest round information
+    # Lead node URL (source of truth - producing blocks)
     lead-node-url: "http://localhost:8080"
 
-    # Follower node API address (must be in follower mode)
+    # Follower node URL (syncs from lead, serves Conduit - must be in follower mode)
     follower-node-url: "http://localhost:8081"
 
     # Default API token (used for both nodes if specific tokens are not provided)
@@ -17,7 +17,16 @@ config:
     # lead-node-token: "your-lead-specific-token"
 
     # How often to poll the lead node for status updates (default: 100ms)
+    # This is used for monitoring lead position only
     # lead-node-poll-interval: 100ms
 
-    # Maximum time to wait for follower node to reach a specific round (default: 5s)
-    # wait-for-round-timeout: 5s
+    # Maximum time to wait for lead/follower nodes to reach a requested round
+    # Default: 0s (wait indefinitely - recommended for localnet)
+    # Set to "30s" or similar for production safety (detects stalled nodes)
+    # wait-for-round-timeout: "0s"
+
+    # Maximum time to wait for lead node connection during startup
+    # Default: 5s (ensures lead node is reachable before starting)
+    # Set to 0s to skip the check entirely (proceed without waiting for lead node)
+    # Maximum allowed: 30s
+    # lead-node-startup-timeout: "5s"

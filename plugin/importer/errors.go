@@ -4,9 +4,14 @@ import "fmt"
 
 // SyncError is used to indicate algod and conduit are not synchronized
 type SyncError struct {
+	// retrievedRound is the round returned from an algod status call
 	retrievedRound uint64
-	expectedRound  uint64
-	err            error
+
+	// expectedRound is the round conduit expected to have gotten back
+	expectedRound uint64
+
+	// err is the error that was received from the endpoint caller
+	err error
 }
 
 // NewSyncError creates a new SyncError

@@ -193,120 +193,6 @@ func TestImporterGetBlockRound0(t *testing.T) {
 	assert.Nil(t, block.Delta)
 }
 
-func TestImporterSyncScenarios(t *testing.T) {
-	t.Parallel()
-
-	type burst func(*mockAlgodServer) uint64
-
-	singleAdvance := func() burst {
-		return func(lead *mockAlgodServer) uint64 {
-			return lead.advanceRound()
-		}
-	}
-
-	advanceMany := func(count int) burst {
-		return func(lead *mockAlgodServer) uint64 {
-			var round uint64
-			for i := 0; i < count; i++ {
-				round = lead.advanceRound()
-			}
-			return round
-		}
-	}
-
-	tests := []struct {
-		name    string
-		bursts  []burst
-		pollDur time.Duration
-	}{
-		{
-			name:    "sequential advancements",
-			pollDur: 50 * time.Millisecond,
-			bursts: []burst{
-				singleAdvance(),
-				singleAdvance(),
-				singleAdvance(),
-			},
-		},
-		{
-			name:    "burst advancements drain queue",
-			pollDur: 50 * time.Millisecond,
-			bursts: []burst{
-				advanceMany(3),
-				advanceMany(2),
-				advanceMany(5),
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			lead, follower := requireMockServers(t, 10, 5)
-			syncComplete := make(chan uint64, 5)
-			follower.setOnSetSyncRound(func(round uint64) {
-				syncComplete <- round
-			})
-
-			cfgStr := createTestConfigWithPollInterval(lead.server.URL, follower.server.URL, tt.pollDur)
-
-			importer := &localnetImporter{}
-			logger := logrus.New()
-			logger.SetLevel(logrus.ErrorLevel)
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			pipelineRound := sdk.Round(0)
-			err := importer.Init(ctx, conduit.MakePipelineInitProvider(&pipelineRound, nil, nil), plugins.MakePluginConfig(cfgStr), logger)
-			require.NoError(t, err)
-			defer importer.Close()
-
-			waitForSyncRound(t, syncComplete, 10)
-			follower.clearSyncRoundCalls()
-
-			var expectedRounds []uint64
-			for _, burst := range tt.bursts {
-				expected := burst(lead)
-				expectedRounds = append(expectedRounds, expected)
-				waitForSyncRound(t, syncComplete, expected)
-			}
-
-			assertChannelEmpty(t, syncComplete)
-
-			calls := follower.getSyncRoundCalls()
-			require.Len(t, calls, len(expectedRounds))
-			for i, call := range calls {
-				assert.Equal(t, expectedRounds[i], call.Round)
-			}
-
-			if len(expectedRounds) > 0 {
-				assert.Equal(t, expectedRounds[len(expectedRounds)-1], follower.currentRound.Load())
-			}
-		})
-	}
-}
-
-func TestDrainSyncSignals(t *testing.T) {
-	t.Parallel()
-
-	importer := &localnetImporter{syncSignal: make(chan uint64, 4)}
-
-	importer.syncSignal <- 4
-	importer.syncSignal <- 8
-	highest, count := importer.drainSyncSignals(2)
-	assert.Equal(t, uint64(8), highest)
-	assert.Equal(t, 2, count)
-
-	importer.syncSignal <- 1
-	close(importer.syncSignal)
-	highest, count = importer.drainSyncSignals(5)
-	assert.Equal(t, uint64(5), highest)
-	assert.Equal(t, 1, count)
-}
-
 func TestWaitForRoundWithTimeoutSyncError(t *testing.T) {
 	t.Parallel()
 
@@ -359,72 +245,103 @@ func TestWaitForRoundWithTimeoutStatusFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "unable to get status after block and status")
 }
 
-func TestImporterSetSyncRoundFailureRetry(t *testing.T) {
+func TestGetBlockWaitsForLead(t *testing.T) {
 	t.Parallel()
 
-	lead, follower := requireMockServers(t, 10, 5)
+	lead, follower := requireMockServers(t, 10, 10)
+	importer := setupTestImporter(t, lead, follower)
 
-	syncAttempts := make(chan uint64, 10)
-	follower.setOnSetSyncRound(func(round uint64) {
-		syncAttempts <- round
-	})
-
-	cfgStr := createTestConfigWithPollInterval(lead.server.URL, follower.server.URL, 50*time.Millisecond)
-
-	importer := &localnetImporter{}
-	logger := logrus.New()
-	logger.SetLevel(logrus.ErrorLevel)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	pipelineRound := sdk.Round(0)
-	err := importer.Init(ctx, conduit.MakePipelineInitProvider(&pipelineRound, nil, nil), plugins.MakePluginConfig(cfgStr), logger)
-	require.NoError(t, err)
-	defer importer.Close()
-
-	// Wait for initial sync to complete
-	waitForSyncRound(t, syncAttempts, 10)
-	follower.clearSyncRoundCalls()
-
-	// Inject SetSyncRound failure
-	follower.setSetSyncRoundError(errors.New("simulated catchup failure"))
-
-	// Advance lead to round 15
+	sendLeadSignal(importer, 15)
 	lead.setRound(15)
 
-	// Wait for sync attempts to be made (poll interval is 50ms, so wait ~3 poll cycles)
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify sync was attempted but follower didn't advance due to error
-	calls := follower.getSyncRoundCalls()
-	assert.Greater(t, len(calls), 0, "SetSyncRound should have been attempted despite error")
-	assert.Equal(t, uint64(10), follower.currentRound.Load(), "follower should still be at round 10 due to sync error")
-
-	// Advance lead to round 18, verify more attempts but still no advancement
-	previousCallCount := len(calls)
-	lead.setRound(18)
-	time.Sleep(200 * time.Millisecond)
-
-	calls = follower.getSyncRoundCalls()
-	assert.Greater(t, len(calls), previousCallCount, "more SetSyncRound attempts should have been made")
-	assert.Equal(t, uint64(10), follower.currentRound.Load(), "follower should still be at round 10 due to sync error")
-
-	// Clear the error and verify sync succeeds
-	follower.clearSetSyncRoundError()
-	lead.setRound(20)
-	waitForSyncRound(t, syncAttempts, 20)
-
-	assert.Equal(t, uint64(20), follower.currentRound.Load(), "follower should now be at round 20 after error cleared")
-
-	// Verify final call count shows multiple attempts were made
-	calls = follower.getSyncRoundCalls()
-	assert.GreaterOrEqual(t, len(calls), 3, "should have made multiple sync attempts across all rounds")
-
-	// Verify we can fetch the block at round 20
-	block, err := importer.GetBlock(20)
+	block, err := importer.GetBlock(15)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(20), block.Round())
+	assert.Equal(t, uint64(15), block.Round())
+}
+
+func TestGetBlockCallsSetSyncRound(t *testing.T) {
+	t.Parallel()
+
+	lead, follower := requireMockServers(t, 20, 10)
+	importer := setupTestImporter(t, lead, follower)
+
+	follower.clearSyncRoundCalls()
+
+	block, err := importer.GetBlock(15)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(15), block.Round())
+
+	calls := follower.getSyncRoundCalls()
+	require.GreaterOrEqual(t, len(calls), 1, "SetSyncRound should have been called")
+	assert.Equal(t, uint64(15), calls[len(calls)-1].Round, "SetSyncRound should be called with requested round")
+}
+
+func TestOnCompleteAdvancesFollower(t *testing.T) {
+	t.Parallel()
+
+	lead, follower := requireMockServers(t, 20, 10)
+	importer := setupTestImporter(t, lead, follower)
+
+	block, err := importer.GetBlock(15)
+	require.NoError(t, err)
+
+	follower.clearSyncRoundCalls()
+
+	err = importer.OnComplete(block)
+	require.NoError(t, err)
+
+	calls := follower.getSyncRoundCalls()
+	require.Len(t, calls, 1, "OnComplete should call SetSyncRound once")
+	assert.Equal(t, uint64(16), calls[0].Round, "OnComplete should call SetSyncRound with round+1")
+}
+
+func TestWaitForLeadTimeout(t *testing.T) {
+	t.Parallel()
+
+	lead, follower := requireMockServers(t, 10, 10)
+	importer := setupTestImporter(t, lead, follower)
+
+	importer.waitForRoundTimeout = 1 * time.Millisecond
+
+	_, err := importer.GetBlock(100)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "timeout waiting for lead to reach round")
+}
+
+func TestWaitForLeadFastPath(t *testing.T) {
+	t.Parallel()
+
+	lead, follower := requireMockServers(t, 20, 10)
+	importer := setupTestImporter(t, lead, follower)
+
+	block, err := importer.GetBlock(15)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(15), block.Round())
+}
+
+func TestGetBlockAndOnCompleteFlow(t *testing.T) {
+	t.Parallel()
+
+	lead, follower := requireMockServers(t, 20, 5)
+	importer := setupTestImporter(t, lead, follower)
+
+	follower.clearSyncRoundCalls()
+
+	for round := uint64(10); round <= 12; round++ {
+		block, err := importer.GetBlock(round)
+		require.NoError(t, err, "GetBlock(%d) should succeed", round)
+		assert.Equal(t, round, block.Round())
+
+		err = importer.OnComplete(block)
+		require.NoError(t, err, "OnComplete(%d) should succeed", round)
+	}
+
+	calls := follower.getSyncRoundCalls()
+
+	require.GreaterOrEqual(t, len(calls), 6, "Should have SetSyncRound calls for GetBlock and OnComplete")
+
+	lastCall := calls[len(calls)-1]
+	assert.Equal(t, uint64(13), lastCall.Round, "Last SetSyncRound should be for round 13")
 }
 
 func TestImporterCloseWithoutInit(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
-	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/json"
 	sdk "github.com/algorand/go-algorand-sdk/v2/types"
 
 	"github.com/algorand/conduit/conduit/data"
@@ -56,11 +56,10 @@ type localnetImporter struct {
 	// Lead node sync fields
 	leadClient    *algod.Client
 	leadState     atomic.Value       // stores leadNodeState
-	pollingCtx    context.Context    // context for background goroutine
-	pollingCancel context.CancelFunc // cancel function for background goroutine
-	pollingWg     sync.WaitGroup     // wait group for background goroutine
-	syncSignal    chan uint64        // channel to signal follower sync requests
-	syncWg        sync.WaitGroup     // wait group for sync handler goroutine
+	pollingCtx    context.Context    // context for lead polling goroutine
+	pollingCancel context.CancelFunc // cancel function for lead polling goroutine
+	pollingWg     sync.WaitGroup     // wait group for lead polling goroutine
+	syncSignal    chan uint64        // channel for lead advancement notifications
 }
 
 func (li *localnetImporter) Metadata() plugins.Metadata {
@@ -73,9 +72,21 @@ func (li *localnetImporter) Config() string {
 }
 
 func (li *localnetImporter) OnComplete(input data.BlockData) error {
-	// In lead-based sync mode, the sync handler goroutine manages SetSyncRound
-	// We don't need to do anything here, but the function is required by the interface
-	return nil
+	// Advance the follower's sync round after successfully processing a block
+	// This ensures the follower stays ahead of Conduit's processing position
+	nextRound := input.Round() + 1
+
+	// Check if lead has reached nextRound before advancing follower
+	leadState := li.leadState.Load().(leadNodeState)
+	if leadState.Round < nextRound {
+		li.logger.Tracef("OnComplete(%d): skipping SetSyncRound(%d) - lead only at round %d",
+			input.Round(), nextRound, leadState.Round)
+		return nil
+	}
+
+	_, err := li.followerClient.SetSyncRound(nextRound).Do(li.ctx)
+	li.logger.Tracef("OnComplete(%d): called SetSyncRound(%d) err: %v", input.Round(), nextRound, err)
+	return err
 }
 
 func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProvider, cfg plugins.PluginConfig, logger *logrus.Logger) error {
@@ -133,19 +144,9 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 		return fmt.Errorf("failed to create lead node client: %w", err)
 	}
 
-	// Get initial lead node status - blocks until available
-	li.logger.Info("Fetching lead node status for initialization...")
-	leadStatus, err := li.waitForLeadStatus()
-	if err != nil {
-		return fmt.Errorf("failed to get initial lead node status: %w", err)
-	}
-
-	leadRound := leadStatus.LastRound
-	li.logger.Infof("Lead node is at round %d", leadRound)
-
-	// Initialize lead state with initial round and timestamp
+	// Initialize lead state with zero round (will be populated by polling goroutine)
 	initialState := leadNodeState{
-		Round:     leadRound,
+		Round:     0,
 		Timestamp: time.Now().UTC(),
 	}
 	li.leadState.Store(initialState)
@@ -186,14 +187,13 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 	// Fetch genesis from follower node
 	genesisResponse, err := li.followerClient.GetGenesis().Do(li.ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get genesis from follower: %w", err)
+		return err
 	}
 
 	if reflect.DeepEqual(genesisResponse, models.Genesis{}) {
-		return fmt.Errorf("unable to fetch genesis file from follower API at %s", li.cfg.FollowerNodeURL)
+		return fmt.Errorf("unable to fetch genesis file from API at %s", li.cfg.FollowerNodeURL)
 	}
 
-	// Convert genesis response to SDK format
 	genesis := sdk.Genesis{
 		SchemaID:    genesisResponse.Id,
 		Network:     genesisResponse.Network,
@@ -209,11 +209,11 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 	// Convert allocations
 	for i, alloc := range genesisResponse.Alloc {
 		var state sdk.Account
-		stateBytes := msgpack.Encode(alloc.State)
+		stateBytes := json.Encode(alloc.State)
 		if stateBytes == nil {
-			return fmt.Errorf("error converting allocation state for address %s", alloc.Addr)
+			return fmt.Errorf("error converting allocation state for address %s: %w", alloc.Addr, err)
 		}
-		err = msgpack.Decode(stateBytes, &state)
+		err = json.LenientDecode(stateBytes, &state)
 		if err != nil {
 			return fmt.Errorf("error unmarshaling allocation state: %w", err)
 		}
@@ -226,31 +226,47 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 
 	li.genesis = &genesis
 
-	// Connect lead and follower - initialize sync
-	li.logger.Info("Connecting lead and follower nodes...")
+	// Setup lead monitoring
+	li.logger.Info("Setting up lead node monitoring...")
 
-	// Create polling context
+	// Create polling context for lead monitoring
 	li.pollingCtx, li.pollingCancel = context.WithCancel(li.ctx)
 
-	// Create sync signal channel with buffer
+	// Create sync signal channel for lead advancement notifications
 	li.syncSignal = make(chan uint64, syncSignalChannelBufferSize)
 
-	// Set the sync round on the follower to start at the lead's current round
-	li.logger.Infof("Setting follower sync round to %d", leadRound)
-	_, err = li.followerClient.SetSyncRound(leadRound).Do(li.ctx)
+	// Start lead polling goroutine (for monitoring lead position)
+	li.startLeadNodePolling()
+
+	// Check follower position relative to Conduit
+	followerStatus, err := li.followerClient.Status().Do(li.ctx)
 	if err != nil {
-		return fmt.Errorf("failed to set initial sync round on follower: %w", err)
+		return fmt.Errorf("failed to get follower status: %w", err)
 	}
 
-	// Start background goroutines for lead monitoring and follower sync
-	li.logger.Info("Starting background sync goroutines...")
-	li.startLeadNodePolling()
-	li.startFollowerSyncHandler()
+	conduitNextRound := uint64(initProvider.NextDBRound())
 
-	li.logger.Infof("Lead-based sync enabled, initial round: %d at %s (UTC), poll interval: %v",
-		initialState.Round,
-		formatTimestamp(initialState.Timestamp),
-		li.cfg.LeadNodePollInterval)
+	if followerStatus.LastRound > conduitNextRound+100 {
+		li.logger.Warnf(
+			"WARNING: Follower is ahead (round %d) of Conduit (round %d). "+
+				"Deltas may be unavailable for early rounds. "+
+				"Consider resetting follower node to genesis.",
+			followerStatus.LastRound, conduitNextRound)
+	}
+
+	li.logger.Infof("GetBlock-driven sync enabled. Follower will track Conduit's processing.")
+
+	// Log current lead state
+	currentState := li.leadState.Load().(leadNodeState)
+	if currentState.Round > 0 {
+		li.logger.Infof("Lead monitoring active: current round %d at %s (UTC), poll interval: %v",
+			currentState.Round,
+			formatTimestamp(currentState.Timestamp),
+			li.cfg.LeadNodePollInterval)
+	} else {
+		li.logger.Infof("Lead monitoring active: waiting for first poll, poll interval: %v",
+			li.cfg.LeadNodePollInterval)
+	}
 
 	return nil
 }
@@ -263,19 +279,17 @@ func (li *localnetImporter) GetGenesis() (*sdk.Genesis, error) {
 }
 
 func (li *localnetImporter) Close() error {
-	// Cancel background goroutines
+	// Stop lead polling goroutine
 	if li.pollingCancel != nil {
-		// First, stop the polling goroutine
 		li.pollingCancel()
 		li.pollingWg.Wait()
 		li.logger.Debug("Lead polling goroutine stopped")
+	}
 
-		// Then close the sync signal channel and wait for sync handler
-		if li.syncSignal != nil {
-			close(li.syncSignal)
-			li.syncWg.Wait()
-			li.logger.Debug("Follower sync handler stopped")
-		}
+	// Close sync signal channel
+	if li.syncSignal != nil {
+		close(li.syncSignal)
+		li.logger.Debug("Sync signal channel closed")
 	}
 
 	if li.cancel != nil {

@@ -10,9 +10,7 @@ const (
 	PluginName = "localnet_importer"
 
 	// Lead sync configuration defaults
-	defaultLeadPollInterval    = 100 * time.Millisecond
-	defaultWaitForRoundTimeout = 5 * time.Second
-
+	defaultLeadPollInterval = 100 * time.Millisecond
 	// Lead sync limits
 	maxLeadPollInterval         = 60 * time.Second
 	syncSignalChannelBufferSize = 10
@@ -32,7 +30,7 @@ type Config struct {
 	LeadNodeToken string `yaml:"lead-node-token"`
 	// LeadNodePollInterval is how often to poll the lead node for status updates (default: 100ms)
 	LeadNodePollInterval time.Duration `yaml:"lead-node-poll-interval"`
-	// WaitForRoundTimeout is the maximum time to wait for follower node to reach a specific round (default: 5s)
+	// WaitForRoundTimeout is the maximum time to wait for lead to reach a round (default: 0 = no timeout)
 	WaitForRoundTimeout time.Duration `yaml:"wait-for-round-timeout"`
 }
 
@@ -52,9 +50,6 @@ func (c *Config) setDefaults() {
 	if c.LeadNodePollInterval == 0 {
 		c.LeadNodePollInterval = defaultLeadPollInterval
 	}
-	if c.WaitForRoundTimeout == 0 {
-		c.WaitForRoundTimeout = defaultWaitForRoundTimeout
-	}
 }
 
 // validateTimings validates timing configuration values
@@ -62,8 +57,9 @@ func (c *Config) validateTimings() error {
 	if c.LeadNodePollInterval <= 0 || c.LeadNodePollInterval > maxLeadPollInterval {
 		return fmt.Errorf("lead-node-poll-interval must be > 0 and <= %v, got: %v", maxLeadPollInterval, c.LeadNodePollInterval)
 	}
-	if c.WaitForRoundTimeout <= 0 {
-		return fmt.Errorf("wait-for-round-timeout must be > 0, got: %v", c.WaitForRoundTimeout)
+	// Allow 0 for wait-for-round-timeout (means no timeout - wait indefinitely)
+	if c.WaitForRoundTimeout < 0 {
+		return fmt.Errorf("wait-for-round-timeout must be >= 0, got: %v", c.WaitForRoundTimeout)
 	}
 	return nil
 }
