@@ -1,3 +1,5 @@
+.PHONY: conduit test fmt docker release
+
 LDFLAGS += -X github.com/algorand/conduit/version.Hash=$(shell git log -n 1 --pretty="%H")
 LDFLAGS += -X github.com/algorand/conduit/version.ShortHash=$(shell git log -n 1 --pretty="%h")
 LDFLAGS += -X github.com/algorand/conduit/version.CompileTime=$(shell date -u +%Y-%m-%dT%H:%M:%S%z)
@@ -12,6 +14,9 @@ test:
 
 fmt:
 	go fmt ./...
+
+docker:
+	docker build -t conduit-localnet-importer:latest .
 
 release:
 	@echo "\nConfiguring .goreleaser"

@@ -24,9 +24,3 @@ config:
     # Default: 0s (wait indefinitely - recommended for localnet)
     # Set to "30s" or similar for production safety (detects stalled nodes)
     # wait-for-round-timeout: "0s"
-
-    # Maximum time to wait for lead node connection during startup
-    # Default: 5s (ensures lead node is reachable before starting)
-    # Set to 0s to skip the check entirely (proceed without waiting for lead node)
-    # Maximum allowed: 30s
-    # lead-node-startup-timeout: "5s"

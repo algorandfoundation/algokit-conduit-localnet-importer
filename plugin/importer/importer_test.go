@@ -421,22 +421,3 @@ func TestImporterTokenFallback(t *testing.T) {
 		})
 	}
 }
-
-func waitForSyncRound(t *testing.T, ch <-chan uint64, expected uint64) {
-	t.Helper()
-	select {
-	case round := <-ch:
-		require.Equal(t, expected, round)
-	case <-time.After(time.Second):
-		t.Fatalf("timed out waiting for sync round %d", expected)
-	}
-}
-
-func assertChannelEmpty(t *testing.T, ch <-chan uint64) {
-	t.Helper()
-	select {
-	case round := <-ch:
-		t.Fatalf("unexpected sync round %d", round)
-	default:
-	}
-}

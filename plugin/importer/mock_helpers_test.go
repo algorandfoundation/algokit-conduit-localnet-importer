@@ -182,14 +182,6 @@ func newMockAlgodServer(t *testing.T, initialRound uint64) *mockAlgodServer {
 	return mock
 }
 
-// advanceRound advances the mock node to the next round
-func (m *mockAlgodServer) advanceRound() uint64 {
-	newRound := m.currentRound.Add(1)
-	m.blocks[newRound] = createTestBlock(newRound)
-	m.deltas[newRound] = createTestDelta(newRound)
-	return newRound
-}
-
 // setRound sets the mock node to a specific round
 func (m *mockAlgodServer) setRound(round uint64) {
 	currentRound := m.currentRound.Load()
@@ -205,20 +197,6 @@ func (m *mockAlgodServer) setRound(round uint64) {
 // close shuts down the mock server
 func (m *mockAlgodServer) close() {
 	m.server.Close()
-}
-
-// setSetSyncRoundError configures SetSyncRound to return an error
-func (m *mockAlgodServer) setSetSyncRoundError(err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.setSyncRoundError = err
-}
-
-// clearSetSyncRoundError clears any configured SetSyncRound error
-func (m *mockAlgodServer) clearSetSyncRoundError() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.setSyncRoundError = nil
 }
 
 // getSyncRoundCalls returns a copy of all SetSyncRound calls
