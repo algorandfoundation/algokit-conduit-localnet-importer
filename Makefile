@@ -5,6 +5,11 @@ LDFLAGS += -X github.com/algorand/conduit/version.ShortHash=$(shell git log -n 1
 LDFLAGS += -X github.com/algorand/conduit/version.CompileTime=$(shell date -u +%Y-%m-%dT%H:%M:%S%z)
 LDFLAGS += -X "github.com/algorand/conduit/version.ReleaseVersion=Custom Plugin Build"
 
+# Docker image configuration
+IMAGE_NAME ?= makerxstudio/conduit-localnet-importer
+IMAGE_TAG ?= latest
+ARCH ?= amd64
+
 conduit:
 	go build -ldflags='${LDFLAGS}' -o conduit cmd/conduit/main.go
 	./conduit -v
@@ -15,8 +20,12 @@ test:
 fmt:
 	go fmt ./...
 
+# Build for specified architecture (default: amd64)
+# Examples:
+#   make docker                    # builds for amd64
+#   make docker ARCH=arm64         # builds for arm64
 docker:
-	docker build -t conduit-localnet-importer:latest .
+	docker build --build-arg TARGETARCH=${ARCH} -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
 release:
 	@echo "\nConfiguring .goreleaser"
