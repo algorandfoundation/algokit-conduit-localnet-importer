@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: conduit-localnet-importer pipeline
 
 on:
   push:
@@ -12,7 +12,8 @@ env:
   IMAGE_NAME: makerxstudio/conduit-localnet-importer
 
 jobs:
-  build-and-push:
+  build:
+    name: Build Docker Images
     runs-on: ubuntu-latest
 
     steps:
@@ -44,8 +45,59 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.gitversion.outputs.semVer }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build summary
+        run: |
+          echo "✅ Successfully built Docker images"
+          echo ""
+          echo "Version: ${{ steps.gitversion.outputs.semVer }}"
+          echo "Platforms: linux/amd64, linux/arm64"
+          echo ""
+          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            echo "ℹ️  Images built but not published (not on main branch)"
+          fi
+
+  publish:
+    name: Publish to Docker Hub
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1.1.1
+        with:
+          versionSpec: '5.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v1.1.1
+        with:
+          useConfigFile: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to Docker Hub
-        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -58,32 +110,24 @@ jobs:
           MAJOR="${{ steps.gitversion.outputs.major }}"
           MINOR="${{ steps.gitversion.outputs.minor }}"
 
-          # Always include full semver tag
           TAGS="${{ env.IMAGE_NAME }}:${VERSION}"
+          TAGS="${TAGS},${{ env.IMAGE_NAME }}:latest"
+          TAGS="${TAGS},${{ env.IMAGE_NAME }}:${MAJOR}"
+          TAGS="${TAGS},${{ env.IMAGE_NAME }}:${MAJOR}.${MINOR}"
 
-          # On main branch, also publish with latest and rolling version tags
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            TAGS="${TAGS},${{ env.IMAGE_NAME }}:latest"
-            TAGS="${TAGS},${{ env.IMAGE_NAME }}:${MAJOR}"
-            TAGS="${TAGS},${{ env.IMAGE_NAME }}:${MAJOR}.${MINOR}"
-
-            echo "Publishing to main branch with tags:"
-            echo "  - ${VERSION} (full semver)"
-            echo "  - latest"
-            echo "  - ${MAJOR} (major version)"
-            echo "  - ${MAJOR}.${MINOR} (major.minor version)"
-          else
-            echo "Building for branch/PR - will not push to Docker Hub"
-            echo "  - ${VERSION} (full semver)"
-          fi
+          echo "Tags to publish:"
+          echo "  - ${VERSION} (full semver)"
+          echo "  - latest"
+          echo "  - ${MAJOR} (major version)"
+          echo "  - ${MAJOR}.${MINOR} (major.minor version)"
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image
+      - name: Push Docker image to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: true
           tags: ${{ steps.docker-tags.outputs.tags }}
           labels: |
             org.opencontainers.image.version=${{ steps.gitversion.outputs.semVer }}
@@ -91,23 +135,12 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: Summary
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo "✅ Successfully published Docker images to Docker Hub"
-          echo ""
-          echo "Tags published:"
-          echo "${{ steps.docker-tags.outputs.tags }}" | tr ',' '\n' | sed 's/^/  - /'
-          echo ""
-          echo "Pull with:"
-          echo "  docker pull makerxstudio/conduit-localnet-importer:latest"
-          echo "  docker pull makerxstudio/conduit-localnet-importer:${{ steps.gitversion.outputs.semVer }}"
-
-  create-release:
-    needs: build-and-push
+  # Step 3: Create GitHub Release (only on main branch, after publish)
+  release:
+    name: Create GitHub Release
+    needs: publish
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
@@ -144,21 +177,27 @@ jobs:
 
             ```bash
             # Pull latest version
-            docker pull makerxstudio/conduit-localnet-importer:latest
+            docker pull ${{ env.IMAGE_NAME }}:latest
 
             # Pull specific version
-            docker pull makerxstudio/conduit-localnet-importer:v${{ steps.gitversion.outputs.semVer }}
+            docker pull ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }}
 
             # Pull major version (gets latest patch)
-            docker pull makerxstudio/conduit-localnet-importer:${{ steps.gitversion.outputs.major }}
+            docker pull ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.major }}
 
             # Pull major.minor version (gets latest patch)
-            docker pull makerxstudio/conduit-localnet-importer:${{ steps.gitversion.outputs.major }}.${{ steps.gitversion.outputs.minor }}
+            docker pull ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.major }}.${{ steps.gitversion.outputs.minor }}
             ```
-
             ---
             Built from commit: ${{ github.sha }}
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "✅ Successfully created GitHub Release"
+          echo ""
+          echo "Release: v${{ steps.gitversion.outputs.semVer }}"
+          echo "Tag: v${{ steps.gitversion.outputs.semVer }}"
