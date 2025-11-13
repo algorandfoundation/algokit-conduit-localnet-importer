@@ -1,0 +1,17 @@
+mode: Mainline
+increment: Inherit
+branches:
+  main:
+    regex: ^main$
+    tag: ''
+    increment: Inherit
+    is-mainline: true
+    is-release-branch: true
+commit-message-incrementing: Enabled
+major-version-bump-message: '\+semver:\s?(breaking|major)|^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?!:'
+minor-version-bump-message: '\+semver:\s?(feature|minor)|^feat(\(.+\))?:'
+patch-version-bump-message: '\+semver:\s?(fix|patch)|^fix(\(.+\))?:'
+no-bump-message: '\+semver:\s?(none|skip)'
+tag-prefix: 'v'
+ignore:
+  sha: []
