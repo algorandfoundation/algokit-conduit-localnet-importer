@@ -1,0 +1,35 @@
+# Dockerfile for goreleaser builds
+# Expects pre-built binary at ./cmd/conduit/conduit
+
+FROM debian:bullseye-slim
+
+# Metadata labels
+LABEL org.opencontainers.image.title="Conduit Localnet Importer" \
+      org.opencontainers.image.description="Algorand Conduit with localnet importer plugin for lead-based synchronization" \
+      org.opencontainers.image.vendor="MakerXStudio" \
+      org.opencontainers.image.source="https://github.com/MakerXStudio/conduit-localnet-importer" \
+      org.opencontainers.image.licenses="MIT"
+
+# Hard code UID/GID to 999 for consistency in advanced deployments.
+# Install ca-certificates to enable using infra providers.
+# Install gosu for fancy data directory management.
+RUN groupadd --gid=999 --system algorand && \
+    useradd --uid=999 --no-log-init --create-home --system --gid algorand algorand && \
+    mkdir -p /data && \
+    chown -R algorand:algorand /data && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends gosu ca-certificates && \
+    update-ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ./cmd/conduit/conduit /usr/local/bin/conduit
+COPY ./docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+ENV CONDUIT_DATA_DIR=/data
+WORKDIR /data
+
+# Expose metrics port (default for Conduit metrics)
+EXPOSE 9999
+
+ENTRYPOINT ["docker-entrypoint.sh"]

@@ -6,9 +6,8 @@ config:
     # Follower node URL (syncs from lead, serves Conduit - must be in follower mode)
     follower-node-url: "http://localhost:8081"
 
-    # Default API token (used for both nodes if specific tokens are not provided)
-    # At least one token must be provided (either 'token' or both specific tokens)
-    token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    # Default API token (optional, used for both nodes if specific tokens are not provided)
+    # token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
     # Follower node API token (optional, overrides 'token' for follower node)
     # follower-node-token: "your-follower-specific-token"

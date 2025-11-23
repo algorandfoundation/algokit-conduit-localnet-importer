@@ -3,19 +3,23 @@
 # change to project root.
 cd "$(dirname "$0")"/..
 
-CONDUIT_GORELEASER_URL=https://raw.githubusercontent.com/winder/conduit/will/goreleaser-env/.goreleaser.yaml
+CONDUIT_GORELEASER_URL=https://raw.githubusercontent.com/algorand/conduit/master/.goreleaser.yaml
 curl -qs $CONDUIT_GORELEASER_URL --output .goreleaser.yaml
 
 # Swap in custom docker image name.
 # Remove extra files -- it is in the upstream image.
-sed -i \
-  -e 's/DOCKER_NAME=.*/DOCKER_NAME=makerxstudio\/conduit-localnet/' \
-  -e '/extra_files:/,+1d' \
-  .goreleaser.yaml
+# Use portable sed syntax (works on both macOS and Linux)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  sed -i '' \
+    -e 's/DOCKER_NAME=.*/DOCKER_NAME=makerxstudio\/conduit-localnet/' \
+    -e '/extra_files:/,+1d' \
+    .goreleaser.yaml
+else
+  sed -i \
+    -e 's/DOCKER_NAME=.*/DOCKER_NAME=makerxstudio\/conduit-localnet/' \
+    -e '/extra_files:/,+1d' \
+    .goreleaser.yaml
+fi
 
-cat <<EOL >> Dockerfile
-# Build this Dockerfile with goreleaser.
-# The binary must be present at /conduit
-FROM algorand/conduit
-ADD conduit /usr/local/bin/conduit
-EOL
+echo "Downloaded and configured .goreleaser.yaml"
+echo "Use Dockerfile.goreleaser for goreleaser builds"

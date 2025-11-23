@@ -185,7 +185,7 @@ func (li *localnetImporter) GetBlock(rnd uint64) (data.BlockData, error) {
 	// Tell follower to sync to this round (idempotent - safe to call multiple times)
 	li.logger.Tracef("GetBlock(%d): calling SetSyncRound", rnd)
 	_, err = li.followerClient.SetSyncRound(rnd).Do(li.ctx)
-	
+
 	if err != nil {
 		return data.BlockData{}, fmt.Errorf("GetBlock(%d): SetSyncRound failed: %w", rnd, err)
 	}

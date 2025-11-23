@@ -130,12 +130,9 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 		leadToken = li.cfg.Token
 		if leadToken != "" {
 			li.logger.Info("Lead node token not specified, using default token")
+		} else {
+			li.logger.Info("No token configured for lead node")
 		}
-	}
-
-	// Validate that we have a token for the lead node
-	if leadToken == "" {
-		return fmt.Errorf("no token provided for lead node: must set either 'lead-node-token' or 'token'")
 	}
 
 	// Create lead node client
@@ -170,12 +167,9 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 		followerToken = li.cfg.Token
 		if followerToken != "" {
 			li.logger.Info("Follower node token not specified, using default token")
+		} else {
+			li.logger.Info("No token configured for follower node")
 		}
-	}
-
-	// Validate that we have a token for the follower node
-	if followerToken == "" {
-		return fmt.Errorf("no token provided for follower node: must set either 'follower-node-token' or 'token'")
 	}
 
 	// Create follower client

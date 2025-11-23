@@ -59,9 +59,9 @@ The localnet importer requires two algod nodes:
 - `lead-node-url`: URL of the lead algod node (e.g., `http://localhost:8080`)
 - `follower-node-url`: URL of the follower algod node (e.g., `http://localhost:8081`)
 
-### Token Configuration
+### Token Configuration (Optional)
 
-At least one token must be provided. You have three options:
+Tokens are optional. If your nodes require authentication, you have three options:
 
 1. **Use same token for both nodes** (simplest):
    - Set `token`: Used for both lead and follower nodes

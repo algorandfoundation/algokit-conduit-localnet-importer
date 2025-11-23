@@ -103,7 +103,7 @@ func TestImporterInitMissingFollowerURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "follower-node-url is required")
 }
 
-func TestImporterInitMissingToken(t *testing.T) {
+func TestImporterInitNoToken(t *testing.T) {
 	t.Parallel()
 
 	lead, follower := requireMockServers(t, 10, 5)
@@ -113,11 +113,13 @@ func TestImporterInitMissingToken(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	pipelineRound := sdk.Round(0)
 	err := importer.Init(ctx, conduit.MakePipelineInitProvider(&pipelineRound, nil, nil), plugins.MakePluginConfig(cfgStr), logger)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no token provided")
+	require.NoError(t, err)
+	defer importer.Close()
 }
 
 func TestImporterInitInvalidTimings(t *testing.T) {
@@ -386,8 +388,6 @@ func TestImporterTokenFallback(t *testing.T) {
 			token:         "",
 			leadToken:     "",
 			followerToken: "",
-			expectError:   true,
-			errorContains: "no token provided",
 		},
 	}
 
