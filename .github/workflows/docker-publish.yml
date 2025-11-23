@@ -9,7 +9,7 @@ on:
       - main
 
 env:
-  IMAGE_NAME: makerxstudio/conduit-localnet-importer
+  IMAGE_NAME: makerxstudio/conduit-localnet
 
 jobs:
   build:
