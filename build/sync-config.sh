@@ -9,7 +9,7 @@ curl -qs $CONDUIT_GORELEASER_URL --output .goreleaser.yaml
 # Swap in custom docker image name.
 # Remove extra files -- it is in the upstream image.
 sed -i \
-  -e 's/DOCKER_NAME=.*/DOCKER_NAME=custom\/conduit/' \
+  -e 's/DOCKER_NAME=.*/DOCKER_NAME=makerxstudio\/conduit-localnet/' \
   -e '/extra_files:/,+1d' \
   .goreleaser.yaml
 
