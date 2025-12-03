@@ -1,0 +1,25 @@
+name: localnet_algod_importer
+config:
+    # Lead node URL (source of truth - producing blocks)
+    lead-node-url: "http://localhost:8080"
+
+    # Follower node URL (syncs from lead, serves Conduit - must be in follower mode)
+    follower-node-url: "http://localhost:8081"
+
+    # Default API token (optional, used for both nodes if specific tokens are not provided)
+    # token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    # Follower node API token (optional, overrides 'token' for follower node)
+    # follower-node-token: "your-follower-specific-token"
+
+    # Lead node API token (optional, overrides 'token' for lead node)
+    # lead-node-token: "your-lead-specific-token"
+
+    # How often to poll the lead node for status updates (default: 100ms)
+    # This is used for monitoring lead position only
+    # lead-node-poll-interval: 100ms
+
+    # Maximum time to wait for lead/follower nodes to reach a requested round
+    # Default: 0s (wait indefinitely - recommended for localnet)
+    # Set to "30s" or similar for production safety (detects stalled nodes)
+    # wait-for-round-timeout: "0s"

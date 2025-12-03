@@ -1,0 +1,79 @@
+# Git
+.git
+.gitignore
+.gitattributes
+.github
+
+# Documentation
+README.md
+*.md
+docs/
+
+# IDE and editors
+.vscode
+.idea
+*.swp
+*.swo
+*.swn
+*~
+.DS_Store
+
+# Build artifacts
+conduit
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+dist/
+build/
+release/
+
+# Test files and coverage
+*_test.go
+*.test
+*.prof
+coverage.*
+*.coverprofile
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Dependencies (will be downloaded during build)
+vendor/
+
+# Configuration files that shouldn't be in image
+.env
+.env.*
+*.local
+conduit_data/
+data/
+
+# Development files
+Makefile
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile*
+.dockerignore
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Security sensitive files
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+.secrets/
