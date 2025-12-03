@@ -7,7 +7,7 @@ import (
 
 const (
 	// PluginName to use when configuring
-	PluginName = "localnet_importer"
+	PluginName = "localnet_algod_importer"
 
 	// Lead sync configuration defaults
 	defaultLeadPollInterval = 100 * time.Millisecond

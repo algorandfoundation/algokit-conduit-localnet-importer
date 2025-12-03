@@ -18,7 +18,7 @@ retry:
 # Pipeline configuration
 # The localnet importer fetches blocks from a follower node that is synced to a lead node
 importer:
-  name: localnet_importer
+  name: localnet_algod_importer
   config:
     # Lead node URL (source of truth for current round)
     lead-node-url: "http://localhost:8080"

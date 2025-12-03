@@ -5,9 +5,10 @@ A standalone [Conduit](https://github.com/algorand/conduit) importer plugin opti
 ## Overview
 
 This plugin provides a specialized importer for Algorand localnet environments that uses a "follow the leader" approach:
-* **Lead-based sync**: Continuously polls a lead (primary) algod node to track block production
-* **Optimized for localnet**: Designed for high-performance localnet environments
-* **Follower mode only**: Operates exclusively in follower mode with state deltas enabled
+
+- **Lead-based sync**: Continuously polls a lead (primary) algod node to track block production
+- **Optimized for localnet**: Designed for high-performance localnet environments
+- **Follower mode only**: Operates exclusively in follower mode with state deltas enabled
 
 ## How It Works
 
@@ -51,6 +52,7 @@ sequenceDiagram
 ## Configuration
 
 The localnet importer requires two algod nodes:
+
 1. **Lead node**: The primary node that generates blocks
 2. **Follower node**: A follower-mode node that syncs to the lead
 
@@ -64,9 +66,11 @@ The localnet importer requires two algod nodes:
 Tokens are optional. If your nodes require authentication, you have three options:
 
 1. **Use same token for both nodes** (simplest):
+
    - Set `token`: Used for both lead and follower nodes
 
 2. **Use separate tokens**:
+
    - Set `follower-node-token`: Used for follower node
    - Set `lead-node-token`: Used for lead node
 
@@ -82,14 +86,16 @@ Tokens are optional. If your nodes require authentication, you have three option
 ### Example Configuration
 
 Initialize conduit with the localnet importer:
+
 ```bash
-./conduit init --importer localnet_importer -d conduit_data
+./conduit init --importer localnet_algod_importer -d conduit_data
 ```
 
 Edit `conduit_data/conduit.yml` and configure the importer section:
+
 ```yaml
 importer:
-  name: localnet_importer
+  name: localnet_algod_importer
   config:
     lead-node-url: "http://localhost:8080"
     follower-node-url: "http://localhost:8081"
@@ -100,6 +106,7 @@ importer:
 ```
 
 Start conduit:
+
 ```bash
 ./conduit -d conduit_data
 ```

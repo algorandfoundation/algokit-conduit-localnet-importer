@@ -1,4 +1,4 @@
-name: localnet_importer
+name: localnet_algod_importer
 config:
     # Lead node URL (source of truth - producing blocks)
     lead-node-url: "http://localhost:8080"
