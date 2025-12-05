@@ -14,6 +14,3 @@ config:
 
     # Lead node API token (optional, overrides 'token' for lead node)
     # lead-node-token: "your-lead-specific-token"
-
-    # Maximum time to wait for lead/follower nodes to reach a requested round
-    # Default: 0s (wait indefinitely - recommended for localnet)

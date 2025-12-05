@@ -1,4 +1,4 @@
-# Example Conduit configuration using the localnet importer plugin
+# Example Conduit configuration using the LocalNet importer plugin
 
 # Conduit log level
 log-level: info
@@ -16,7 +16,7 @@ retry:
   delay: 1s
 
 # Pipeline configuration
-# The localnet importer fetches blocks from a follower node that is synced to a lead node
+# The LocalNet importer fetches blocks from a follower node that is synced to a lead node
 importer:
   name: localnet_algod
   config:
