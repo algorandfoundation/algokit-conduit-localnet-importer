@@ -185,23 +185,36 @@ func (li *localnetImporter) Init(ctx context.Context, initProvider data.InitProv
 
 	li.genesis = &genesis
 
-	// Check follower position relative to Conduit
-	followerStatus, err := li.followerClient.Status().Do(li.ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get follower status: %w", err)
+	targetRound := uint64(initProvider.NextDBRound())
+	var roundToCheck uint64 = 0
+	if targetRound > 0 {
+		roundToCheck = targetRound - 1
 	}
-
-	conduitNextRound := uint64(initProvider.NextDBRound())
-
-	if followerStatus.LastRound > conduitNextRound+100 {
-		// TODO: NC - This is expected (depending on config). What to do there?
+	li.logger.Info("checking...")
+	if li.isConduitOutOfSync(roundToCheck) {
 		li.logger.Warnf(
-			"WARNING: Follower is ahead (round %d) of Conduit (round %d). "+
-				"Consider resetting localnet.",
-			followerStatus.LastRound, conduitNextRound)
+			"WARNING: Follower is out of sync with the last successfully processed block in Conduit (round %d). "+
+				"A Localnet reset may be required for syncing to continue.", roundToCheck)
 	}
 
 	return nil
+}
+
+func (li *localnetImporter) isConduitOutOfSync(checkRound uint64) bool {
+	if checkRound == 0 {
+		// No deltas for round 0, so check if the block is available.
+		_, err := li.followerClient.Block(0).Do(li.ctx)
+		if err != nil {
+			li.logger.Infof("Block for round %d is unavailable on the configured node. API Response: %s", checkRound, err)
+		}
+		return err != nil
+	}
+
+	_, err := li.getDelta(checkRound)
+	if err != nil {
+		li.logger.Infof("State Delta for round %d is unavailable on the configured node. API Response: %s", checkRound, err)
+	}
+	return err != nil
 }
 
 func (li *localnetImporter) GetGenesis() (*sdk.Genesis, error) {
