@@ -91,9 +91,6 @@ RUN /usr/local/bin/conduit -v || true
 ENV CONDUIT_DATA_DIR=/data
 WORKDIR ${CONDUIT_DATA_DIR}
 
-# Expose metrics port (default for Conduit metrics)
-EXPOSE 9999
-
 # Note: docker-entrypoint.sh calls 'conduit'. Similar entrypoint scripts
 # accept the binary as the first argument in order to surface a suite of
 # tools (i.e. algod, goal, algocfg, ...). Maybe this will change in the

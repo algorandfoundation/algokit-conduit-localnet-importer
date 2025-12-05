@@ -29,7 +29,4 @@ COPY ./docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 ENV CONDUIT_DATA_DIR=/data
 WORKDIR /data
 
-# Expose metrics port (default for Conduit metrics)
-EXPOSE 9999
-
 ENTRYPOINT ["docker-entrypoint.sh"]
