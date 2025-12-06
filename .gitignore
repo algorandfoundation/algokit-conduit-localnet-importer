@@ -34,4 +34,7 @@ go.work.sum
 # macOS
 .DS_Store
 
+# node
+node_modules/
+
 conduit
