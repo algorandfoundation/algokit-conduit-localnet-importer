@@ -26,9 +26,3 @@ fmt:
 #   make docker ARCH=arm64         # builds for arm64
 docker:
 	docker build --build-arg TARGETARCH=${ARCH} -t ${IMAGE_NAME}:${IMAGE_TAG} .
-
-release:
-	@echo "\nConfiguring .goreleaser"
-	build/sync-config.sh
-	@echo "Build everything with:"
-	@echo "   goreleaser release --skip-publish --snapshot --clean"
