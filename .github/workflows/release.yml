@@ -22,9 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get-next-version.outputs.new-release-version }}
-      major: ${{ steps.parse-version.outputs.major }}
-      minor: ${{ steps.parse-version.outputs.minor }}
     steps:
+      - name: Generate bot token
+        uses: actions/create-github-app-token@v1
+        id: app_token
+        with:
+          app-id: ${{ secrets.BOT_ID }}
+          private-key: ${{ secrets.BOT_SK }}
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -37,23 +42,12 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get next version
         id: get-next-version
         run: npx semantic-release --dry-run
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Parse version components
-        id: parse-version
-        run: |
-          VERSION="${{ steps.get-next-version.outputs.new-release-version }}"
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          MINOR=$(echo "$VERSION" | cut -d. -f2)
-          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
-          echo "minor=${MINOR}" >> $GITHUB_OUTPUT
+          GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
 
   publish:
     name: Publish to Docker Hub
@@ -68,33 +62,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          tags: ${{ env.IMAGE_NAME }}:${{ needs.get-next-version.outputs.version }}
-          labels: |
-            org.opencontainers.image.version=${{ needs.get-next-version.outputs.version }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
       
       - name: Generate Docker tags
         id: docker-tags
         run: |
           VERSION="${{ needs.get-next-version.outputs.version }}"
-          MAJOR="${{ needs.get-next-version.outputs.major }}"
-          MINOR="${{ needs.get-next-version.outputs.minor }}"
 
           TAGS="${{ env.IMAGE_NAME }}:${VERSION}"
           echo "Tags to publish:"
@@ -110,7 +87,7 @@ jobs:
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
       
-      - name: Push Docker image to Docker Hub
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -122,6 +99,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
   release:
@@ -130,6 +108,13 @@ jobs:
     if: needs.get-next-version.outputs.version != ''
     runs-on: ubuntu-latest
     steps:
+      - name: Generate bot token
+        uses: actions/create-github-app-token@v1
+        id: app_token
+        with:
+          app-id: ${{ secrets.BOT_ID }}
+          private-key: ${{ secrets.BOT_SK }}
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -142,11 +127,9 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Release to GitHub
         id: get-next-version
         run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
