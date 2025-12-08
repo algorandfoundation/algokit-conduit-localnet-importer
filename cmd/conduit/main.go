@@ -9,8 +9,8 @@ import (
 	_ "github.com/algorand/conduit/conduit/plugins/importers/all"
 	_ "github.com/algorand/conduit/conduit/plugins/processors/all"
 
-	// Import our custom localnet importer plugin
-	_ "github.com/MakerXStudio/conduit-localnet-importer/plugin/importer"
+	// Import our custom localnet algod importer plugin
+	_ "github.com/algorandfoundation/algokit-conduit-localnet-importer/plugin/importer"
 
 	"github.com/algorand/conduit/pkg/cli"
 )
