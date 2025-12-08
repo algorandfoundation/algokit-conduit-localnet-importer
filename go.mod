@@ -1,4 +1,4 @@
-module github.com/algorandfoundation/conduit-localnet-importer
+module github.com/algorandfoundation/algokit-conduit-localnet-importer
 
 go 1.25.0
 
