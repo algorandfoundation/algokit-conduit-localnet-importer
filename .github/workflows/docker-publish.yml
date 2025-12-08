@@ -9,7 +9,7 @@ on:
       - main
 
 env:
-  IMAGE_NAME: makerxstudio/conduit-localnet
+  IMAGE_NAME: algorandfoundation/conduit-localnet
 
 jobs:
   build:
