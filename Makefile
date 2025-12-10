@@ -6,7 +6,7 @@ LDFLAGS += -X github.com/algorand/conduit/version.CompileTime=$(shell date -u +%
 LDFLAGS += -X "github.com/algorand/conduit/version.ReleaseVersion=Custom Plugin Build"
 
 # Docker image configuration
-IMAGE_NAME ?= makerxstudio/conduit-localnet
+IMAGE_NAME ?= algorandfoundation/conduit-localnet
 IMAGE_TAG ?= latest
 ARCH ?= amd64
 
@@ -26,9 +26,3 @@ fmt:
 #   make docker ARCH=arm64         # builds for arm64
 docker:
 	docker build --build-arg TARGETARCH=${ARCH} -t ${IMAGE_NAME}:${IMAGE_TAG} .
-
-release:
-	@echo "\nConfiguring .goreleaser"
-	build/sync-config.sh
-	@echo "Build everything with:"
-	@echo "   goreleaser release --skip-publish --snapshot --clean"
