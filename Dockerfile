@@ -1,7 +1,7 @@
 # Multi-stage build for conduit with LocalNet algod importer plugin
 
 # Stage 1: Build the conduit binary
-FROM debian:bullseye-slim AS builder
+FROM debian:trixie-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && \
@@ -57,7 +57,7 @@ RUN go clean -cache -modcache -testcache && \
     rm -rf /root/.cache /tmp/* /var/tmp/*
 
 # Stage 2: Runtime image
-FROM debian:bullseye-slim
+FROM debian:trixie-slim
 
 # Metadata labels
 LABEL org.opencontainers.image.title="Conduit LocalNet" \
